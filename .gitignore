@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Airflow
+airflow.db
+airflow.cfg
+airflow_login.py
+logs/
+*.log
+unittests.cfg
+airflow-webserver.pid
+standalone_admin_password.txt
+
+# Environment variables
+.env
+.env.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Docker
+*.pid
+
+# Jenkins
+jenkins_home/
+
+# Temporary files
+*.tmp
+*.bak
