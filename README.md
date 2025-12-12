@@ -28,7 +28,29 @@ Run the Jenkins container which listens on port `8989`.
 docker-compose -f docker-compose.jenkins.yml up -d --build
 ```
 
-Access at [http://localhost:8989](http://localhost:8989).
+### 1.1 Configure Credentials (SSH) (Important!)
+
+Since Jenkins runs in Docker, it needs your SSH key to access GitHub.
+
+1. **Get your Private Key**:
+
+    ```bash
+    cat ~/.ssh/id_rsa
+    # Copy the content from -----BEGIN... to ...END-----
+    ```
+
+2. **Add to Jenkins**:
+    - Go to **Manage Jenkins** -> **Credentials** -> **System** -> **Global credentials (unrestricted)**.
+    - Click **+ Add Credentials**.
+    - **Kind**: `SSH Username with private key`.
+    - **Username**: `git` (Must be exact!).
+    - **Private Key**: Select **Enter directly** and paste your ley.
+    - **ID**: `github-ssh-key`.
+    - Click **Create**.
+3. **Disable Host Key Checking** (For Local Dev):
+    - Go to **Manage Jenkins** -> **Security**.
+    - Under **Git Host Key Verification Configuration**, select **No verification**.
+    - Click **Save**.
 
 ### 2. Create Jobs
 
