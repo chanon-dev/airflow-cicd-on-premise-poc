@@ -1,0 +1,121 @@
+version: '3.8'
+services:
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
+    user: root
+    ports:
+      - "8989:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Map the workspace so we can deploy to the same directory structure if strictly needed,
+      # but generally pulling from git is better.
+      # For local dev, we might want to map the project dir to deploy "in place" but
+      # best practice is Jenkins pulls from Git.
+      # However, for the 'deploy to machine' part, Jenkins will use the docker socket
+      # to spawn containers on the host. The volume mounts in `docker-compose.yml`
+      # (./dags:/opt/airflow/dags) are relative to where the `docker-compose up` command is run.
+      # IMPORTANT: When running docker-compose from inside Jenkins, the paths in docker-compose.yml
+      # are interpreted by the HOST docker daemon. usage of `.` usually refers to the path
+      # on the HOST, not inside the container.
+      # To make this work seamlessly, we should probably clone the repo to a known path
+      # on the host or use absolute paths, but that's hard to automate generically.
+      # OR, we keep it simple: Jenkins workspace inside container is NOT same as host path.
+      # If we want to mount `./dags`, we need to make sure the data exists on the HOST at that path.
+      #
+      # WORKAROUND for Localhost:
+      # We will map the current directory to a known path in Jenkins and run compose from there?
+      # No, Jenkins will pull into /var/jenkins_home/workspace/JOB_NAME.
+      # That path exists inside the volume `jenkins_home`. The Host doesn't easily see it.
+      # If `docker-compose.yml` says `./dags`, docker daemon looks for `./dags` relative to...
+      # actually, relative to the CWD of the `docker-compose` command.
+      # If I run `docker-compose` inside Jenkins at `/var/jenkins_home/workspace/job`,
+      # and that folder is NOT on the host at that path, the bind mount `./dags` will fail or create empty dir on host??
+      # Actually, `docker-compose` sends the build context. But for volumes:
+      # If I say `- ./dags:/opt/airflow/dags`, the source `./dags` is resolved by the Docker CLI
+      # to an absolute path. If running inside Jenkins, it resolves to `/var/jenkins_home/workspace/job/dags`.
+      # Then it tells the Docker Daemon "Mount /var/jenkins_home/workspace/job/dags".
+      # BUT the Docker Daemon is on the HOST. It looks at `/var/jenkins_home/workspace/job/dags` on the HOST.
+      # Does that exist? Only if `jenkins_home` volume is a bind mount or if the paths align.
+      #
+      # To fix this for a local setup:
+      # We should bind mount the project directory into Jenkins at the exact same path as the host ??
+      # That's messy.
+      #
+      # Alternative: Use named volumes for DAGs, and have a step to copy files into the volume.
+      # This is more "cloud native".
+      # Let's change `docker-compose.yml` to use a named volume for dags,
+      # or simply accept that for this "local demo", we might need to be careful.
+      #
+      # Let's try the "Copy to Sidecar" approach or just update the DAGs via a simple copy?
+      #
+      # actually, the user wants "deploy to docker at our machine".
+      # If we use a bind mount in `docker-compose.yml`:
+      # `- ./dags:/opt/airflow/dags`
+      # We need `./dags` to exist on the HOST machine at the location where `docker-compose up` is "logically" running?
+      # No, it's where the path resolves to.
+      #
+      # SIMPLIFICATION:
+      # We will mount the current working directory to the same path inside Jenkins...
+      # But we don't know the absolute path easily in a tailored response.
+      #
+      # BETTER APPROACH:
+      # Just copy the DAGs into the airflow container image?
+      # That means Re-building the image on every deploy.
+      # User said: "push code... deploy to docker".
+      # Rebuilding image is a valid strategy and avoids volume mount issues.
+      #
+      # Let's stick to: "The pipeline builds a new Airflow image with the DAGs inside, and restarts the service."
+      # This is robust.
+      #
+      # So `docker-compose.yml` should NOT bind mount dags if we want a pure CD pipeline that creates artifacts.
+      # BUT, for local dev, we usually want bind mounts.
+      #
+      # Compromise: `docker-compose.yml` will use bind mounts.
+      # Jenkins pipeline will:
+      # 1. Checkout code.
+      # 2. It needs to update the files on the HOST that are being mounted.
+      #    OR it executes `docker build` and we remove the bind mount in PROD?
+      #
+      # Let's assume the user is okay with the "Rebuild" approach as it's cleaner for CI/CD.
+      # I will modify `docker-compose.yml` to comment out bind mounts or make them optional?
+      # No, let's make the `docker-compose.yml` production-ready-ish:
+      # `COPY . /opt/airflow/` in Dockerfile.
+      # And remove volumes for dags in `docker-compose.yml`.
+      #
+      # Wait, checking `docker-compose` file again. I included:
+      # - ./dags:/opt/airflow/dags
+      #
+      # If I want Jenkins to deploy this, Jenkins will run `docker-compose up`.
+      # If I keep the volume, Jenkins (inside container) will say "Mount /var/jenkins_home/workspace/.../dags".
+      # Host Docker Daemon says "I don't have that path".
+      #
+      # FIX: modifying `docker-compose.jenkins.yml` to bind mount the current PWD to `/project` inside Jenkins?
+      # And we tell Jenkins to run from there?
+      # No, Jenkins checks out from Git.
+      #
+      # Solution: The Jenkinsfile should run a script that works.
+      # Simplest working solution for "Local Jenkins controlling Local Docker":
+      # run `docker build -t my-airflow .` (builds context from jenkins workspace, creates image on host).
+      # then `docker-compose up -d` (uses that image).
+      # AND we must remove the `- ./dags` volume mount from `docker-compose.yml`,
+      # OR we blindly assume the user is running Jenkins with a bind-mount of the project root to `jenkins_home`? Unlikely.
+      #
+      # I will update `docker-compose.yml` to REMOVE the local volume mounts for DAGs,
+      # and instead `COPY` them in the Dockerfile.
+      # This ensures that when Jenkins builds the image, the DAGs are inside it.
+      # Then `docker-compose up` launches the container with the new DAGs.
+      # This is the most reliable "CI/CD" flow.
+      #
+      # I need to update:
+      # 1. Dockerfile (COPY dags)
+      # 2. docker-compose.yml (Remove volumes for dags/plugins, or keep logs)
+
+    container_name: jenkins_cicd
+    restart: always
+
+volumes:
+  jenkins_home:
