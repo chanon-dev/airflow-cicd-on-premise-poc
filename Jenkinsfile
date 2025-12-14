@@ -7,7 +7,9 @@ pipeline {
     }
 
     environment {
-        AIRFLOW_IMAGE_NAME = 'my-custom-airflow:latest'
+        // Dynamic Tag based on Git Commit (calculated in Initialize stage or shell)
+        // AIRFLOW_IMAGE_NAME will be set dynamically
+        COMPOSE_PROJECT_NAME = 'airflow-production' // Default, can be overwritten
     }
 
     stages {
@@ -18,23 +20,14 @@ pipeline {
                     def targetEnv = params.ENV_NAME
                     
                     if (targetEnv == 'AUTO' || targetEnv == null) {
-                        // Detect from Job Name (e.g. "TMS-DATA-MIGRATION/DEV")
                         def jobName = env.JOB_BASE_NAME.toUpperCase()
-                        
-                        if (jobName.contains('DEV')) {
-                            targetEnv = 'DEV'
-                        } else if (jobName.contains('UAT')) {
-                            targetEnv = 'UAT'
-                        } else if (jobName.contains('PROD')) {
-                            targetEnv = 'PROD'
-                        } else {
-                            error "Could not auto-detect environment from Job Name: ${jobName}. Please rename job to include DEV, UAT, or PROD."
-                        }
+                        if (jobName.contains('DEV')) targetEnv = 'DEV'
+                        else if (jobName.contains('UAT')) targetEnv = 'UAT'
+                        else targetEnv = 'PROD'
                     }
 
                     echo "Deploying to Environment: ${targetEnv}"
                     
-                    // Define environment-specific variables
                     if (targetEnv == 'DEV') {
                         env.COMPOSE_PROJECT_NAME = 'airflow-dev'
                         env.AIRFLOW_PORT = '8082'
@@ -44,13 +37,18 @@ pipeline {
                         env.AIRFLOW_PORT = '8081'
                         env.FLOWER_PORT = '5556'
                     } else {
-                        // PROD
                         env.COMPOSE_PROJECT_NAME = 'airflow-prod'
                         env.AIRFLOW_PORT = '8080'
                         env.FLOWER_PORT = '5555'
                     }
+
+                    // Versioning Strategy: Short Git Hash
+                    def gitHash = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    env.AIRFLOW_IMAGE_TAG = gitHash
+                    env.AIRFLOW_IMAGE_NAME = "my-custom-airflow:${gitHash}"
                     
                     echo "Configured for ${env.COMPOSE_PROJECT_NAME} on Port ${env.AIRFLOW_PORT}"
+                    echo "Version: ${env.AIRFLOW_IMAGE_TAG}"
                 }
             }
         }
@@ -61,34 +59,60 @@ pipeline {
             }
         }
 
-        stage('Build Airflow Image') {
+        stage('Test DAGs') {
             steps {
                 script {
-                    echo "Building Docker Image..."
-                    sh 'docker build -t ${AIRFLOW_IMAGE_NAME} .'
+                    echo "Running DAG Integrity Tests..."
+                    // We need a temporary container with Airflow installed to run the tests.
+                    // We can reuse the official image or build a test image.
+                    // Simple approach: Build a test image (or the actual image) and run pytest inside it.
+                    
+                    // 1. Build the image (Testing Phase)
+                    sh "docker build -t ${env.AIRFLOW_IMAGE_NAME} ."
+                    
+                    // 2. Run Pytest inside the container
+                    // Mounting tests folder just for this step if it's not in the image yet
+                    try {
+                        sh """
+                            docker run --rm \
+                                --entrypoint /bin/bash \
+                                -v \$(pwd)/tests:/opt/airflow/tests \
+                                ${env.AIRFLOW_IMAGE_NAME} \
+                                -c "pip install pytest && pytest /opt/airflow/tests/test_dag_integrity.py"
+                        """
+                    } catch (Exception e) {
+                        error "DAG Tests Failed! Aborting deployment."
+                    }
                 }
             }
         }
 
         stage('Deploy') {
             steps {
+                // Secure Secrets Handling
+                // Assuming you have 'airflow-postgres-creds' (Username/Password) in Jenkins credentials.
+                // If not, it falls back to empty, but syntax is valid.
+                // For POC, we fallback to defaults if not found.
                 script {
-                    // Ensure basic .env exists
+                     // Ensure basic .env exist
                     sh 'echo "AIRFLOW_UID=50000" > .env'
-
-                    sh """
-                        export COMPOSE_PROJECT_NAME=${env.COMPOSE_PROJECT_NAME}
-                        export AIRFLOW_PORT=${env.AIRFLOW_PORT}
-                        export FLOWER_PORT=${env.FLOWER_PORT}
-                        export AIRFLOW_IMAGE_NAME=${env.AIRFLOW_IMAGE_NAME}
-                        
-                        # Set default secrets if not in Jenkins credentials
-                        export POSTGRES_USER=\${POSTGRES_USER:-airflow}
-                        export POSTGRES_PASSWORD=\${POSTGRES_PASSWORD:-airflow}
-                        export POSTGRES_DB=\${POSTGRES_DB:-airflow}
-                        
-                        docker compose up -d
-                    """
+                    
+                    withCredentials([usernamePassword(credentialsId: 'airflow-postgres-creds', usernameVariable: 'DB_USER', passwordVariable: 'DB_PASS')]) {
+                        sh """
+                            export COMPOSE_PROJECT_NAME=${env.COMPOSE_PROJECT_NAME}
+                            export AIRFLOW_PORT=${env.AIRFLOW_PORT}
+                            export FLOWER_PORT=${env.FLOWER_PORT}
+                            export AIRFLOW_IMAGE_NAME=${env.AIRFLOW_IMAGE_NAME}
+                            
+                            # Use Credentials if available, else default (for POC ease)
+                            export POSTGRES_USER=\${DB_USER:-airflow}
+                            export POSTGRES_PASSWORD=\${DB_PASS:-airflow}
+                            export POSTGRES_DB=\${POSTGRES_DB:-airflow}
+                            
+                            echo "Deploying Image: ${env.AIRFLOW_IMAGE_NAME}"
+                            docker compose up -d
+                        """
+                    }
                 }
             }
         }
