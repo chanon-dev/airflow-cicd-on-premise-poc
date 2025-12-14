@@ -76,7 +76,6 @@ pipeline {
                         sh """
                             docker run --rm \
                                 --entrypoint /bin/bash \
-                                -v \$(pwd)/tests:/opt/airflow/tests \
                                 ${env.AIRFLOW_IMAGE_NAME} \
                                 -c "pip install pytest && pytest /opt/airflow/tests/test_dag_integrity.py"
                         """

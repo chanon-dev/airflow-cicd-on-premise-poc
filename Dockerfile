@@ -14,5 +14,6 @@ USER airflow
 # This allows the image to be self-contained for CI/CD
 COPY --chown=airflow:root ./dags /opt/airflow/dags
 COPY --chown=airflow:root ./plugins /opt/airflow/plugins
+COPY --chown=airflow:root ./tests /opt/airflow/tests
 # COPY --chown=airflow:root ./requirements.txt /requirements.txt
 # RUN pip install --no-cache-dir -r /requirements.txt
