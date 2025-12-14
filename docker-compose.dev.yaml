@@ -1,0 +1,31 @@
+version: '3.8'
+services:
+  airflow-apiserver:
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+      - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+
+  airflow-scheduler:
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+      - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+
+  airflow-dag-processor:
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+      - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+
+  airflow-worker:
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+      - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+
+  airflow-triggerer:
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+      - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+
+  airflow-init:
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+      - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins

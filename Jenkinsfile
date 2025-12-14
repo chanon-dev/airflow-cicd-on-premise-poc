@@ -82,6 +82,11 @@ pipeline {
                         export FLOWER_PORT=${env.FLOWER_PORT}
                         export AIRFLOW_IMAGE_NAME=${env.AIRFLOW_IMAGE_NAME}
                         
+                        # Set default secrets if not in Jenkins credentials
+                        export POSTGRES_USER=${POSTGRES_USER:-airflow}
+                        export POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-airflow}
+                        export POSTGRES_DB=${POSTGRES_DB:-airflow}
+                        
                         docker compose up -d
                     """
                 }
